@@ -1,69 +1,62 @@
 import torch
 import torch.nn as nn
-import math
 
-class PositionalEncoding(nn.Module):
-    def __init__(self, d_model, max_len=1000, dropout=0.1):
-        super().__init__()
-        self.dropout = nn.Dropout(p=dropout)
+class CNNGRUModel(nn.Module):
+    def __init__(self, input_dim, cnn_channels=64, kernel_size=3, hidden_dim=256, num_layers=2, output_dim=2, dropout=0.3):
+        super(CNNGRUModel, self).__init__()
         
-        position = torch.arange(max_len).unsqueeze(1)
-        div_term = torch.exp(torch.arange(0, d_model, 2) * (-math.log(10000.0) / d_model))
-        pe = torch.zeros(max_len, 1, d_model)
-        pe[:, 0, 0::2] = torch.sin(position * div_term)
-        pe[:, 0, 1::2] = torch.cos(position * div_term)
-        self.register_buffer('pe', pe)
-
-    def forward(self, x):
-        x = x + self.pe[:x.size(1)].transpose(0, 1)
-        return self.dropout(x)
-
-class TransformerModel(nn.Module):
-    def __init__(self, input_dim, d_model=128, nhead=4, num_layers=2, dim_feedforward=512, dropout=0.1):
-        super(TransformerModel, self).__init__()
+        # 1D Convolution
+        # Input shape to Conv1d: (Batch, Channels/Feats, Seq_Len)
+        # Note: GRU expects (Batch, Seq, Feats) if batch_first=True
+        # We need to transpose before Conv and after Conv.
         
-        # Input embedding
-        self.input_proj = nn.Linear(input_dim, d_model)
+        # We want to convolve over time? Or over features?
+        # Usually for Time Series, Conv1d over Time dimension extracts local temporal patterns.
+        # Input channels = Features (input_dim).
         
-        # Positional Encoding (using Sinusoidal from class above instead of parameter for better generalization)
-        self.pos_encoder = PositionalEncoding(d_model, dropout=dropout)
-
-        encoder_layer = nn.TransformerEncoderLayer(
-            d_model=d_model, 
-            nhead=nhead, 
-            dim_feedforward=dim_feedforward, 
-            dropout=dropout, 
-            batch_first=True,
-            norm_first=True # Pre-norm often stabilizes training
+        self.conv1 = nn.Conv1d(
+            in_channels=input_dim,
+            out_channels=cnn_channels,
+            kernel_size=kernel_size,
+            padding=kernel_size//2 # Same padding roughly
         )
-        self.transformer_encoder = nn.TransformerEncoder(encoder_layer, num_layers=num_layers)
+        self.relu = nn.ReLU()
         
-        self.norm = nn.LayerNorm(d_model) # Final norm
-        self.dropout_head = nn.Dropout(dropout)
+        # GRU
+        # Input to GRU: cnn_channels
+        self.gru = nn.GRU(
+            input_size=cnn_channels,
+            hidden_size=hidden_dim,
+            num_layers=num_layers,
+            batch_first=True,
+            dropout=dropout if num_layers > 1 else 0.0
+        )
         
-        self.head = nn.Sequential(
-            nn.Linear(d_model, 64),
+        self.dropout = nn.Dropout(dropout)
+        self.fc = nn.Sequential(
+            nn.Linear(hidden_dim, 64),
             nn.ReLU(),
             nn.Dropout(dropout),
-            nn.Linear(64, 2)
+            nn.Linear(64, output_dim)
         )
 
-    def forward(self, x, mask=None):
-        # x: (Batch, Seq, Feature)
-        x = self.input_proj(x)
-        x = self.pos_encoder(x) # (Batch, Seq, d_model) with auto transpose handle
+    def forward(self, x, hidden=None):
+        # x: (Batch, Seq, Feats)
         
-        seq_len = x.size(1)
+        # Prepare for Conv1d: (Batch, Feats, Seq)
+        x = x.permute(0, 2, 1)
         
-        if mask is None:
-             # Causal mask: Ensure query i cannot attend to key j > i
-             mask = nn.Transformer.generate_square_subsequent_mask(seq_len).to(x.device)
+        x = self.conv1(x)
+        x = self.relu(x)
         
-        # Transformer Encoder
-        output = self.transformer_encoder(x, mask=mask, is_causal=True)
+        # Back to (Batch, Seq, Channels) for GRU
+        x = x.permute(0, 2, 1)
         
-        output = self.norm(output)
-        output = self.dropout_head(output)
+        # GRU
+        out, hidden = self.gru(x, hidden)
         
-        predictions = self.head(output)
-        return predictions, None
+        # Head (on all steps)
+        # We want predictions for all steps for training
+        outputs = self.fc(out)
+        
+        return outputs, hidden

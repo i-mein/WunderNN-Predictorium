@@ -1,10 +1,17 @@
-
+# directories
+/wandb
 /datasets
+/submissions
+
 /solutions/backlog
-/solutions/example_solution
+/solutions/baseline_starter
+/solutions/../*.pth
 
+# files 
 *.zip
-
+*.pth
+*.pt
+*.onnx
 
 # Byte-compiled / optimized / DLL files
 __pycache__/

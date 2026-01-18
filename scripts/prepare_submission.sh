@@ -3,8 +3,8 @@
 # Prepare the submission package for the Wunder Challenge 2
 
 # Define the source and output
-SOL_DIR="solutions/exp_02"
-OUTPUT_ZIP="submission_exp_02.zip"
+SOL_DIR="solutions/exp_03"
+OUTPUT_ZIP="submission_exp_03.zip"
 
 if [ ! -d "$SOL_DIR" ]; then
     echo "Error: Solution directory $SOL_DIR not found."
