@@ -1,0 +1,47 @@
+model_name: "GRU-Transformer-CNN"
+description: "Configuration for the GRU-Transformer-CNN model architecture."
+input_features: 
+  - p0
+  - p1
+  - p2
+  - p3
+  - p4
+  - p5
+  - p6
+  - p7
+  - p8
+  - p9
+  - p10
+  - p11
+  - v0
+  - v1
+  - v2
+  - v3
+  - v4
+  - v5
+  - v6
+  - v7
+  - v8
+  - v9
+  - v10
+  - v11
+  - dp0
+  - dp1
+  - dp2
+  - dp3
+  - dv0
+  - dv1
+  - dv2
+  - dv3
+learning_rate: 0.001
+batch_size: 64
+num_epochs: 50
+hidden_size: 128
+num_layers: 2
+dropout: 0.2
+cnn_kernel_size: 3
+transformer_heads: 4
+transformer_layers: 2
+sequence_length: 100
+weight_decay: 0.0001
+evaluation_metric: "weighted_pearson"
