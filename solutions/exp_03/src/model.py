@@ -41,15 +41,15 @@ class CNNGRUModel(nn.Module):
         )
 
     def forward(self, x, hidden=None):
-        # x: (Batch, Seq, Feats)
+        # x: (Batch, Seq, Feats) = B x T x F
         
-        # Prepare for Conv1d: (Batch, Feats, Seq)
+        # Prepare for Conv1d: (Batch, Feats, Seq) = B x F x T
         x = x.permute(0, 2, 1)
         
         x = self.conv1(x)
         x = self.relu(x)
         
-        # Back to (Batch, Seq, Channels) for GRU
+        # Back to (Batch, Seq, Channels) for GRU = B x T x F
         x = x.permute(0, 2, 1)
         
         # GRU

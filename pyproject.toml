@@ -1,28 +1,21 @@
-[tool]
+[project]
 name = "WunderNN-Predictorium-ml-project"
 version = "0.1.0"
 description = "A machine learning project for predicting future price movements based on Limit Order Book data."
-authors = ["Your Name <your.email@example.com>"]
-license = "MIT"
-
-[build-system]
-requires = ["poetry-core>=1.0.0"]
-build-backend = "poetry.core.masonry.api"
-
-[dependencies]
-torch = "^1.12.0"
-torchvision = "^0.13.0"
-torchaudio = "^0.12.0"
-pytorch-lightning = "^1.6.0"
-numpy = "^1.21.0"
-pandas = "^1.3.0"
-onnxruntime = "^1.10.0"
-matplotlib = "^3.5.0"
-scikit-learn = "^1.0.0"
-pyyaml = "^6.0"
-
-[dev-dependencies]
-pytest = "^6.2.0"
-black = "^21.12b0"
-isort = "^5.10.0"
-mypy = "^0.910"
+requires-python = ">=3.11"
+dependencies = [
+    "torch",
+    "numpy",
+    "pandas",
+    "tqdm",
+    "wandb",
+    "python-dotenv",
+    "scipy",
+    "matplotlib",
+    "seaborn",
+    "pyarrow",
+    "ta",
+    "tti",
+    "scikit-learn",
+    "pyyaml"
+]
