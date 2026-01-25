@@ -17,5 +17,7 @@ dependencies = [
     "ta",
     "tti",
     "scikit-learn",
-    "pyyaml"
+    "pyyaml",
+    "lightgbm>=4.6.0",
+    "catboost>=1.2.8",
 ]

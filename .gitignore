@@ -12,6 +12,7 @@
 *.pth
 *.pt
 *.onnx
+*.cbm
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
