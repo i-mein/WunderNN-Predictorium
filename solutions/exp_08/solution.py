@@ -21,7 +21,8 @@ class Model:
     
     def __init__(self):
         self.output_dir = os.path.dirname(os.path.abspath(__file__))
-        self.model_path = os.path.join(self.output_dir, "best_model.pth")
+        # self.model_path = os.path.join(self.output_dir, "best_model.pth")
+        self.model_path = os.path.join(self.output_dir, "best_model_seed_42.pth")
         self.device = torch.device("cpu")  # Inference on CPU usually
         
         # Load Model

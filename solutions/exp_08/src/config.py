@@ -59,6 +59,9 @@ class Config:
         else "mps" if torch.backends.mps.is_available() 
         else "cpu"
     )
+
+    # Seeds
+    SEEDS = [42]
     
     # Logging
     PROJECT_NAME = "WunderNN-Predictorium"

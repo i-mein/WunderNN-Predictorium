@@ -20,6 +20,17 @@ from utils import weighted_pearson_correlation
 load_dotenv()
 WANDB_API_KEY = os.getenv("WANDB_API_KEY")
 
+# create an utility function to set the seed
+def set_seed(seed):
+    """Set the seed for reproducibility."""
+    random.seed(seed)
+    np.random.seed(seed)
+    torch.manual_seed(seed)
+    torch.cuda.manual_seed(seed)
+    torch.backends.cudnn.deterministic = True
+    torch.backends.cudnn.benchmark = False  
+
+
 class LOBDataset(Dataset):
     """Dataset for Limit Order Book sequences with dual-stream features."""
     
@@ -103,7 +114,8 @@ def validate(model, val_loader, device):
     return mean_corr, c0, c1
 
 
-def train():
+
+def train(seed=42):
     """Main training function."""
     
     # Initialize W&B if available
@@ -115,6 +127,9 @@ def train():
         config_dict = {k: v for k, v in vars(CFG).items() if not k.startswith('_')}
         wandb.init(project=CFG.PROJECT_NAME, name=CFG.EXP_NAME, config=config_dict)
     
+    # Set seed
+    set_seed(seed)
+
     # Load datasets
     train_dataset = LOBDataset(os.path.join(CFG.ROOT_DIR, CFG.TRAIN_PATH))
     valid_dataset = LOBDataset(os.path.join(CFG.ROOT_DIR, CFG.VALID_PATH))
@@ -263,7 +278,7 @@ def train():
             best_val_score = val_score
             patience_counter = 0
             
-            model_path = os.path.join(output_dir, "best_model.pth")
+            model_path = os.path.join(output_dir, f"best_model_seed_{seed}.pth")
             torch.save(model.state_dict(), model_path)
             print(f"  ✓ Saved best model (score: {best_val_score:.4f})")
         else:
@@ -292,6 +307,8 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Train exp_07 model")
     parser.add_argument("--epochs", type=int, default=None, help="Override number of epochs")
     parser.add_argument("--batch_size", type=int, default=None, help="Override batch size")
+    # add argument for a list of seeds
+    parser.add_argument("--seeds", type=int, default=[42, 123, 456, 789, 1011], nargs='+', help="List of seeds")
     args = parser.parse_args()
     
     # Override config if specified
@@ -299,5 +316,8 @@ if __name__ == "__main__":
         CFG.EPOCHS = args.epochs
     if args.batch_size is not None:
         CFG.BATCH_SIZE = args.batch_size
+    if args.seeds is not None:
+        CFG.SEEDS = args.seeds
     
-    train()
+    for seed in CFG.SEEDS:
+        train(seed)
