@@ -90,7 +90,7 @@ def weighted_pearson_loss(y_pred, y_true, weights=None, eps=1e-8):
 
 
 def combined_loss(pred_t0, pred_t1, target_t0, target_t1,
-                  weight_t0=0.5, weight_t1=0.5, mse_reg=0.1):
+                  weight_t0=0.5, weight_t1=0.5, mse_reg=0.1, use_mse_only=False):
     """
     Combined loss for dual-head model.
     
@@ -102,23 +102,29 @@ def combined_loss(pred_t0, pred_t1, target_t0, target_t1,
         weight_t0: Weight for t0 loss
         weight_t1: Weight for t1 loss
         mse_reg: MSE regularization weight (for stability)
+        use_mse_only: If True, use only MSE loss (no Pearson)
     
     Returns:
         total_loss: Combined loss
         loss_t0: t0 component
         loss_t1: t1 component
     """
-    # Pearson correlation loss for each target
-    loss_t0_pearson = pearson_correlation_loss(pred_t0, target_t0)
-    loss_t1_pearson = pearson_correlation_loss(pred_t1, target_t1)
-    
-    # MSE regularization (helps with training stability)
+    # MSE loss for each target
     loss_t0_mse = F.mse_loss(pred_t0.view(-1), target_t0.view(-1))
     loss_t1_mse = F.mse_loss(pred_t1.view(-1), target_t1.view(-1))
     
-    # Combined per-target losses
-    loss_t0 = loss_t0_pearson + mse_reg * loss_t0_mse
-    loss_t1 = loss_t1_pearson + mse_reg * loss_t1_mse
+    if use_mse_only:
+        # Pure MSE loss (like exp_06)
+        loss_t0 = loss_t0_mse
+        loss_t1 = loss_t1_mse
+    else:
+        # Pearson correlation loss for each target
+        loss_t0_pearson = pearson_correlation_loss(pred_t0, target_t0)
+        loss_t1_pearson = pearson_correlation_loss(pred_t1, target_t1)
+        
+        # Combined per-target losses
+        loss_t0 = loss_t0_pearson + mse_reg * loss_t0_mse
+        loss_t1 = loss_t1_pearson + mse_reg * loss_t1_mse
     
     # Total loss
     total_loss = weight_t0 * loss_t0 + weight_t1 * loss_t1

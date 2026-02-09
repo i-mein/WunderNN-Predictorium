@@ -35,14 +35,15 @@ class Config:
     # Training
     BATCH_SIZE = 64  # Same as exp_06
     EPOCHS = 30
-    LEARNING_RATE = 2e-3  # Increased from 1e-3 for faster initial learning
+    LEARNING_RATE = 5e-4  # Lower LR for stability
     WEIGHT_DECAY = 1e-4
     GRADIENT_CLIP = 1.0
     
-    # Loss weights - t1 needs more focus (harder to predict)
-    LOSS_WEIGHT_T0 = 0.3 #0.4  # Reduced (easier target)
-    LOSS_WEIGHT_T1 = 0.7 #0.6  # Increased (harder target, lower correlation)
-    MSE_REG_WEIGHT = 0.1 #0.05  # Reduced to prioritize Pearson optimization
+    # Loss configuration
+    USE_MSE_ONLY = True  # Use pure MSE loss (like exp_06, more stable)
+    LOSS_WEIGHT_T0 = 0.5  # Equal weights
+    LOSS_WEIGHT_T1 = 0.5  # Equal weights
+    MSE_REG_WEIGHT = 0.1  # Only used if USE_MSE_ONLY=False
     
     # Early stopping
     PATIENCE = 10
@@ -53,5 +54,5 @@ class Config:
 
     # WandB Logging
     PROJECT_NAME = "WunderNN-Predictorium"
-    EXPERIMENT_NAME = "exp_09_dual_head_pearson"
+    EXPERIMENT_NAME = "exp_09_dual_head_mse"
     USE_WANDB = True  # Set to False to disable W&B logging

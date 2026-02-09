@@ -236,13 +236,14 @@ def train():
             optimizer.zero_grad()
             pred_t0, pred_t1, _ = model(X)
             
-            # Combined Pearson + MSE loss
+            # Combined loss (MSE or Pearson+MSE based on config)
             loss, loss_t0, loss_t1 = combined_loss(
                 pred_t0.squeeze(-1), pred_t1.squeeze(-1),
                 y[:, :, 0], y[:, :, 1],
                 weight_t0=CFG.LOSS_WEIGHT_T0,
                 weight_t1=CFG.LOSS_WEIGHT_T1,
-                mse_reg=CFG.MSE_REG_WEIGHT
+                mse_reg=CFG.MSE_REG_WEIGHT,
+                use_mse_only=getattr(CFG, 'USE_MSE_ONLY', False)
             )
             
             loss.backward()

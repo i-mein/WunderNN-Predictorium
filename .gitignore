@@ -9,7 +9,7 @@
 /solutions/baseline_starter
 /solutions/../*.pth
 
-/solutions/../wandb
+/solutions/exp_08b/wandb/*
 
 # files 
 *.zip
