@@ -1,4 +1,6 @@
 # directories
+
+/artifacts/*.png
 /wandb
 /datasets
 /submissions
@@ -6,6 +8,8 @@
 /solutions/backlog
 /solutions/baseline_starter
 /solutions/../*.pth
+
+/solutions/../wandb
 
 # files 
 *.zip
