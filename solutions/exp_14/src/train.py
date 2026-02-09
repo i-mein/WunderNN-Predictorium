@@ -110,7 +110,78 @@ def train_catboost_model(X_train, y_train, X_val, y_val,
     return model, val_pearson, importance_df
 
 
+def train_multi_seed(X_train, y_train, X_val, y_val, 
+                     feature_names, target_name, output_dir, seeds=[42, 123, 456]):
+    """Train with multiple seeds and return average Pearson."""
+    from catboost import Pool
+    
+    pearson_scores = []
+    models = []
+    
+    for seed in seeds:
+        print(f"\n  Training {target_name} with seed={seed}...")
+        
+        train_pool = Pool(X_train, y_train, feature_names=feature_names)
+        val_pool = Pool(X_val, y_val, feature_names=feature_names)
+        
+        model = CatBoostRegressor(
+            iterations=CFG.ITERATIONS,
+            learning_rate=CFG.LEARNING_RATE,
+            depth=CFG.DEPTH,
+            l2_leaf_reg=CFG.L2_LEAF_REG,
+            random_strength=CFG.RANDOM_STRENGTH,
+            bagging_temperature=CFG.BAGGING_TEMPERATURE,
+            loss_function='RMSE',
+            eval_metric='RMSE',
+            random_seed=seed,
+            verbose=CFG.VERBOSE,
+            allow_writing_files=False,
+            task_type=CFG.TASK_TYPE,
+            early_stopping_rounds=CFG.EARLY_STOPPING_ROUNDS
+        )
+        
+        model.fit(train_pool, eval_set=val_pool)
+        
+        val_pred = model.predict(X_val)
+        pearson = evaluate_predictions(y_val, val_pred, target_name)
+        pearson_scores.append(pearson)
+        models.append(model)
+        
+        print(f"    Seed {seed} Pearson: {pearson:.4f}")
+    
+    avg_pearson = np.mean(pearson_scores)
+    std_pearson = np.std(pearson_scores)
+    
+    print(f"\n{target_name} Multi-seed results:")
+    print(f"  Scores: {[f'{p:.4f}' for p in pearson_scores]}")
+    print(f"  Mean: {avg_pearson:.4f} ± {std_pearson:.4f}")
+    
+    # Return best model (or first seed=42 for reproducibility)
+    best_model = models[0]  # seed=42
+    
+    # Save model
+    model_name = CFG.MODEL_T0 if target_name == 't0' else CFG.MODEL_T1
+    model_path = os.path.join(output_dir, model_name)
+    best_model.save_model(model_path)
+    print(f"  Saved model to {model_path}")
+    
+    # Feature importance
+    importance = best_model.get_feature_importance()
+    importance_df = pd.DataFrame({
+        'feature': feature_names,
+        'importance': importance
+    }).sort_values('importance', ascending=False)
+    
+    return avg_pearson, std_pearson, importance_df
+
+
 def main():
+    import argparse
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--multi-seed', action='store_true', 
+                        help='Train with 3 seeds and average results')
+    args = parser.parse_args()
+    
     print("="*60)
     print("Exp 14: CatBoost Baseline")
     print("="*60)
@@ -122,6 +193,7 @@ def main():
     output_dir = os.path.join(CFG.ROOT_DIR, CFG.OUTPUT_DIR)
     os.makedirs(output_dir, exist_ok=True)
     print(f"Output directory: {output_dir}")
+    print(f"Multi-seed mode: {args.multi_seed}")
     
     # Initialize W&B
     use_wandb = WANDB_AVAILABLE and os.getenv("WANDB_API_KEY")
@@ -149,27 +221,51 @@ def main():
     print(f"Val samples: {len(X_val)}")
     print(f"Features: {len(feature_names)}")
     
-    # Train t0 model
-    model_t0, pearson_t0, importance_t0 = train_catboost_model(
-        X_train, y_train_t0, X_val, y_val_t0,
-        feature_names, 't0', output_dir
-    )
-    
-    # Train t1 model
-    model_t1, pearson_t1, importance_t1 = train_catboost_model(
-        X_train, y_train_t1, X_val, y_val_t1,
-        feature_names, 't1', output_dir
-    )
-    
-    # Combined score
-    val_pearson = (pearson_t0 + pearson_t1) / 2
-    
-    print("\n" + "="*60)
-    print("FINAL RESULTS")
-    print("="*60)
-    print(f"Val Pearson t0: {pearson_t0:.4f}")
-    print(f"Val Pearson t1: {pearson_t1:.4f}")
-    print(f"Val Pearson (avg): {val_pearson:.4f}")
+    if args.multi_seed:
+        # Multi-seed training for robust validation
+        print("\n" + "="*50)
+        print("Multi-seed training (3 seeds)")
+        print("="*50)
+        
+        pearson_t0, std_t0, importance_t0 = train_multi_seed(
+            X_train, y_train_t0, X_val, y_val_t0,
+            feature_names, 't0', output_dir
+        )
+        
+        pearson_t1, std_t1, importance_t1 = train_multi_seed(
+            X_train, y_train_t1, X_val, y_val_t1,
+            feature_names, 't1', output_dir
+        )
+        
+        val_pearson = (pearson_t0 + pearson_t1) / 2
+        
+        print("\n" + "="*60)
+        print("FINAL RESULTS (Multi-seed)")
+        print("="*60)
+        print(f"Val Pearson t0: {pearson_t0:.4f} ± {std_t0:.4f}")
+        print(f"Val Pearson t1: {pearson_t1:.4f} ± {std_t1:.4f}")
+        print(f"Val Pearson (avg): {val_pearson:.4f}")
+        
+    else:
+        # Single-seed training
+        model_t0, pearson_t0, importance_t0 = train_catboost_model(
+            X_train, y_train_t0, X_val, y_val_t0,
+            feature_names, 't0', output_dir
+        )
+        
+        model_t1, pearson_t1, importance_t1 = train_catboost_model(
+            X_train, y_train_t1, X_val, y_val_t1,
+            feature_names, 't1', output_dir
+        )
+        
+        val_pearson = (pearson_t0 + pearson_t1) / 2
+        
+        print("\n" + "="*60)
+        print("FINAL RESULTS")
+        print("="*60)
+        print(f"Val Pearson t0: {pearson_t0:.4f}")
+        print(f"Val Pearson t1: {pearson_t1:.4f}")
+        print(f"Val Pearson (avg): {val_pearson:.4f}")
     
     # Save feature importance
     importance_t0.to_csv(os.path.join(output_dir, 'feature_importance_t0.csv'), index=False)

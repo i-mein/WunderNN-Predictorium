@@ -72,12 +72,42 @@ exp_14/
 
 ## Run Commands
 ```bash
-# Training
+# Basic training (single seed)
 python solutions/exp_14/src/train.py
+
+# Robust training (3 seeds, averaged)
+python solutions/exp_14/src/train.py --multi-seed
+
+# Hyperparameter optimization with Optuna (3 seeds per trial)
+python solutions/exp_14/src/optimize.py
 
 # Evaluation (uses exp_01 run_eval.sh)
 ./scripts/run_eval.sh exp_14
 ```
+
+## Optuna Optimization
+
+### Configuration
+- **N_TRIALS**: 50 (configurable)
+- **N_SEEDS**: 3 per trial (robust validation)
+- **TIMEOUT**: 2 hours max
+- **Sampler**: TPE (Tree-structured Parzen Estimator)
+
+### Search Space
+| Parameter | Range | Type |
+|-----------|-------|------|
+| iterations | 1000-5000 | int (step=500) |
+| learning_rate | 0.01-0.1 | float (log) |
+| depth | 4-10 | int |
+| l2_leaf_reg | 1.0-10.0 | float |
+| random_strength | 0.1-2.0 | float |
+| bagging_temperature | 0.0-1.0 | float |
+| min_data_in_leaf | 1-50 | int |
+
+### Outputs
+- `optuna_results.csv`: All trial results
+- `model_catboost_t0.cbm`: Best t0 model
+- `model_catboost_t1.cbm`: Best t1 model
 
 ## Next Steps After Baseline
 - exp_15: Add micro-price, LOB pressure, trade flow features
