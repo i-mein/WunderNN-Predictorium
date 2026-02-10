@@ -12,6 +12,7 @@
 /solutions/exp_08b/wandb/*
 
 # files 
+*.csv
 *.zip
 *.pth
 *.pt

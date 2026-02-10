@@ -32,8 +32,8 @@ except ImportError:
 # ============================================================
 # Configuration
 # ============================================================
-N_SEEDS = 3
-SEEDS = [42, 123, 456]
+N_SEEDS = 1 #3
+SEEDS = [42] #[42, 123, 456]
 N_TRIALS = 50
 TIMEOUT = 3600 * 2  # 2 hours max
 EARLY_STOPPING = 100  # Faster during optimization
