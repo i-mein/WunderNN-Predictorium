@@ -92,10 +92,44 @@ class DLPredictor:
 
 
 # ============================================================
-# exp_15: CatBoost Predictor (enhanced features)
+# exp_15: CatBoost Predictor (100 enhanced features)
 # ============================================================
+# Feature names expected by the model (in exact order)
+FEATURE_NAMES = [
+    'need_prediction',
+    'p0', 'p1', 'p2', 'p3', 'p4', 'p5', 'p6', 'p7', 'p8', 'p9', 'p10', 'p11',
+    'v0', 'v1', 'v2', 'v3', 'v4', 'v5', 'v6', 'v7', 'v8', 'v9', 'v10', 'v11',
+    'dp0', 'dp1', 'dp2', 'dp3', 'dv0', 'dv1', 'dv2', 'dv3',
+    'mid_price_0', 'mid_price_1',
+    'spread_0', 'spread_1',
+    'vol_imbal_0', 'vol_imbal_1', 'vol_imbal_2', 'vol_imbal_3', 'vol_imbal_4', 'vol_imbal_5',
+    'total_bid_vol', 'total_ask_vol', 'vol_imbal_total',
+    'relative_spread_0', 'vol_ratio', 'price_depth',
+    'micro_price', 'micro_price_deviation', 'micro_price_deviation_norm',
+    'weighted_mid_2', 'micro_price_deviation_2',
+    'bid_pressure_0', 'bid_pressure_01', 'ask_pressure_0', 'ask_pressure_01',
+    'bid_slope', 'ask_slope', 'slope_imbal',
+    'depth_imbal_near', 'depth_imbal_far',
+    'bid_vwap', 'ask_vwap', 'vwap_spread',
+    'price_range', 'bid_range', 'ask_range',
+    'bid_spacing', 'ask_spacing', 'spacing_ratio',
+    'mid_price_0_roll_mean_3', 'mid_price_0_roll_std_3',
+    'mid_price_0_roll_mean_10', 'mid_price_0_roll_std_10',
+    'spread_0_roll_mean_3', 'spread_0_roll_std_3',
+    'spread_0_roll_mean_10', 'spread_0_roll_std_10',
+    'vol_imbal_total_roll_mean_3', 'vol_imbal_total_roll_std_3',
+    'vol_imbal_total_roll_mean_10', 'vol_imbal_total_roll_std_10',
+    'micro_price_deviation_roll_mean_3', 'micro_price_deviation_roll_std_3',
+    'micro_price_deviation_roll_mean_10', 'micro_price_deviation_roll_std_10',
+    'depth_imbal_near_roll_mean_3', 'depth_imbal_near_roll_std_3',
+    'depth_imbal_near_roll_mean_10', 'depth_imbal_near_roll_std_10',
+    'p0_diff', 'p6_diff', 'mid_price_0_diff', 'spread_0_diff',
+    'vol_imbal_total_diff', 'micro_price_diff', 'micro_price_deviation_diff', 'depth_imbal_near_diff'
+]
+
+
 class CatBoostPredictor:
-    """exp_15 CatBoost predictor wrapper with enhanced features."""
+    """exp_15 CatBoost predictor wrapper with 100 enhanced features."""
     
     def __init__(self, model_t0_path, model_t1_path):
         self.model_t0 = CatBoostRegressor()
@@ -110,15 +144,24 @@ class CatBoostPredictor:
     def reset(self):
         """Reset state for new sequence."""
         self.step = 0
+        # Rolling buffers
         self.mid_price_0_buffer = []
         self.spread_0_buffer = []
         self.vol_imbal_total_buffer = []
         self.micro_price_deviation_buffer = []
         self.depth_imbal_near_buffer = []
-        self.prev_values = {}
+        # Previous values for diff calculation
+        self.prev_p0 = None
+        self.prev_p6 = None
+        self.prev_mid_price_0 = None
+        self.prev_spread_0 = None
+        self.prev_vol_imbal_total = None
+        self.prev_micro_price = None
+        self.prev_micro_price_deviation = None
+        self.prev_depth_imbal_near = None
     
     def _compute_rolling_stats(self, buffer, windows):
-        """Compute rolling mean and std."""
+        """Compute rolling mean and std for given windows."""
         stats = []
         arr = np.array(buffer)
         for w in windows:
@@ -130,135 +173,207 @@ class CatBoostPredictor:
                 stats.extend([0.0, 0.0])
         return stats
     
-    def generate_features(self, step_data):
-        """Generate 100 features for CatBoost (matches exp_15)."""
-        p = step_data[:12]   # Prices
-        v = step_data[12:24] # Volumes
+    def generate_features(self, step_data, need_prediction):
+        """
+        Generate exactly 100 features matching the model's expected features.
         
-        features = []
+        Input step_data layout (32 values):
+        - p0-p11: prices (12)
+        - v0-v11: volumes (12)
+        - dp0-dp3: price diffs (4)
+        - dv0-dv3: volume diffs (4)
+        """
+        # Parse raw data
+        p = step_data[:12]   # Prices p0-p11
+        v = step_data[12:24] # Volumes v0-v11
+        dp = step_data[24:28] # Price diffs dp0-dp3
+        dv = step_data[28:32] # Volume diffs dv0-dv3
         
-        # 1. RAW FEATURES (24)
-        features.extend(p)
-        features.extend(v)
+        features = {}
+        eps = self.epsilon
         
-        # 2. BASE ENGINEERED FEATURES (16)
+        # ========================================
+        # 1. RAW FEATURES (33 features)
+        # ========================================
+        features['need_prediction'] = float(need_prediction)
+        
+        for i in range(12):
+            features[f'p{i}'] = p[i]
+            features[f'v{i}'] = v[i]
+        
+        for i in range(4):
+            features[f'dp{i}'] = dp[i]
+            features[f'dv{i}'] = dv[i]
+        
+        # ========================================
+        # 2. BASE ENGINEERED FEATURES (16 features)
+        # ========================================
         mid_price_0 = (p[0] + p[6]) * 0.5
         mid_price_1 = (p[1] + p[7]) * 0.5
-        features.append(mid_price_0)
-        features.append(mid_price_1)
+        features['mid_price_0'] = mid_price_0
+        features['mid_price_1'] = mid_price_1
         
         spread_0 = p[6] - p[0]
         spread_1 = p[7] - p[1]
-        features.append(spread_0)
-        features.append(spread_1)
+        features['spread_0'] = spread_0
+        features['spread_1'] = spread_1
         
+        # Volume imbalances per level (6 features)
         for i in range(6):
             bv = v[i]
             av = v[i + 6]
-            vol_imbal = (bv - av) / (bv + av + self.epsilon)
-            features.append(vol_imbal)
+            features[f'vol_imbal_{i}'] = (bv - av) / (bv + av + eps)
         
         total_bid_vol = sum(v[:6])
         total_ask_vol = sum(v[6:])
-        features.append(total_bid_vol)
-        features.append(total_ask_vol)
+        features['total_bid_vol'] = total_bid_vol
+        features['total_ask_vol'] = total_ask_vol
         
-        vol_imbal_total = (total_bid_vol - total_ask_vol) / \
-                          (total_bid_vol + total_ask_vol + self.epsilon)
-        features.append(vol_imbal_total)
+        vol_imbal_total = (total_bid_vol - total_ask_vol) / (total_bid_vol + total_ask_vol + eps)
+        features['vol_imbal_total'] = vol_imbal_total
         
-        relative_spread_0 = spread_0 / (mid_price_0 + self.epsilon)
-        features.append(relative_spread_0)
+        features['relative_spread_0'] = spread_0 / (mid_price_0 + eps)
+        features['vol_ratio'] = total_bid_vol / (total_ask_vol + eps)
+        features['price_depth'] = (p[5] - p[0]) / (p[0] + eps)
         
-        vol_ratio = total_bid_vol / (total_ask_vol + self.epsilon)
-        features.append(vol_ratio)
-        
-        price_depth = (p[5] - p[0]) / (p[0] + self.epsilon)
-        features.append(price_depth)
-        
-        # 3. MICRO-PRICE FEATURES (5)
-        micro_price = (p[0] * v[6] + p[6] * v[0]) / (v[0] + v[6] + self.epsilon)
-        features.append(micro_price)
+        # ========================================
+        # 3. MICRO-PRICE FEATURES (5 features)
+        # ========================================
+        micro_price = (p[0] * v[6] + p[6] * v[0]) / (v[0] + v[6] + eps)
+        features['micro_price'] = micro_price
         
         micro_price_deviation = micro_price - mid_price_0
-        features.append(micro_price_deviation)
+        features['micro_price_deviation'] = micro_price_deviation
         
-        micro_price_deviation_norm = micro_price_deviation / (spread_0 + self.epsilon)
-        features.append(micro_price_deviation_norm)
+        features['micro_price_deviation_norm'] = micro_price_deviation / (spread_0 + eps)
         
-        weighted_mid_2 = (p[1] * v[7] + p[7] * v[1]) / (v[1] + v[7] + self.epsilon)
-        features.append(weighted_mid_2)
+        weighted_mid_2 = (p[1] * v[7] + p[7] * v[1]) / (v[1] + v[7] + eps)
+        features['weighted_mid_2'] = weighted_mid_2
         
-        micro_price_deviation_2 = weighted_mid_2 - mid_price_1
-        features.append(micro_price_deviation_2)
+        features['micro_price_deviation_2'] = weighted_mid_2 - mid_price_1
         
-        # 4. ORDER BOOK PRESSURE (12)
-        bid_pressure_0 = v[0] / (total_bid_vol + self.epsilon)
-        bid_pressure_01 = (v[0] + v[1]) / (total_bid_vol + self.epsilon)
-        ask_pressure_0 = v[6] / (total_ask_vol + self.epsilon)
-        ask_pressure_01 = (v[6] + v[7]) / (total_ask_vol + self.epsilon)
-        features.extend([bid_pressure_0, bid_pressure_01, ask_pressure_0, ask_pressure_01])
+        # ========================================
+        # 4. ORDER BOOK PRESSURE (12 features)
+        # ========================================
+        features['bid_pressure_0'] = v[0] / (total_bid_vol + eps)
+        features['bid_pressure_01'] = (v[0] + v[1]) / (total_bid_vol + eps)
+        features['ask_pressure_0'] = v[6] / (total_ask_vol + eps)
+        features['ask_pressure_01'] = (v[6] + v[7]) / (total_ask_vol + eps)
         
-        bid_vwap = sum(p[i] * v[i] for i in range(6)) / (total_bid_vol + self.epsilon)
-        ask_vwap = sum(p[i+6] * v[i+6] for i in range(6)) / (total_ask_vol + self.epsilon)
+        bid_vwap = sum(p[i] * v[i] for i in range(6)) / (total_bid_vol + eps)
+        ask_vwap = sum(p[i+6] * v[i+6] for i in range(6)) / (total_ask_vol + eps)
         
-        bid_slope = (p[0] - bid_vwap) / (total_bid_vol + self.epsilon)
-        ask_slope = (ask_vwap - p[6]) / (total_ask_vol + self.epsilon)
-        slope_imbal = (bid_slope - ask_slope) / (bid_slope + ask_slope + self.epsilon)
-        features.extend([bid_slope, ask_slope, slope_imbal])
+        bid_slope = (p[0] - bid_vwap) / (total_bid_vol + eps)
+        ask_slope = (ask_vwap - p[6]) / (total_ask_vol + eps)
+        features['bid_slope'] = bid_slope
+        features['ask_slope'] = ask_slope
+        features['slope_imbal'] = (bid_slope - ask_slope) / (bid_slope + ask_slope + eps)
         
-        depth_imbal_near = (v[0] + v[1] - v[6] - v[7]) / \
-                           (v[0] + v[1] + v[6] + v[7] + self.epsilon)
-        depth_imbal_far = (v[4] + v[5] - v[10] - v[11]) / \
-                          (v[4] + v[5] + v[10] + v[11] + self.epsilon)
-        features.extend([depth_imbal_near, depth_imbal_far])
+        depth_imbal_near = (v[0] + v[1] - v[6] - v[7]) / (v[0] + v[1] + v[6] + v[7] + eps)
+        depth_imbal_far = (v[4] + v[5] - v[10] - v[11]) / (v[4] + v[5] + v[10] + v[11] + eps)
+        features['depth_imbal_near'] = depth_imbal_near
+        features['depth_imbal_far'] = depth_imbal_far
         
-        features.extend([bid_vwap, ask_vwap, ask_vwap - bid_vwap])
+        features['bid_vwap'] = bid_vwap
+        features['ask_vwap'] = ask_vwap
+        features['vwap_spread'] = ask_vwap - bid_vwap
         
-        # 5. PRICE LEVEL FEATURES (6)
-        price_range = p[11] - p[0]
-        bid_range = p[5] - p[0]
-        ask_range = p[11] - p[6]
-        bid_spacing = (p[0] - p[5]) / 5
-        ask_spacing = (p[11] - p[6]) / 5
-        spacing_ratio = bid_spacing / (ask_spacing + self.epsilon)
-        features.extend([price_range, bid_range, ask_range, bid_spacing, ask_spacing, spacing_ratio])
+        # ========================================
+        # 5. PRICE LEVEL FEATURES (6 features)
+        # ========================================
+        features['price_range'] = p[11] - p[0]
+        features['bid_range'] = p[5] - p[0]
+        features['ask_range'] = p[11] - p[6]
+        features['bid_spacing'] = (p[0] - p[5]) / 5
+        features['ask_spacing'] = (p[11] - p[6]) / 5
+        features['spacing_ratio'] = features['bid_spacing'] / (features['ask_spacing'] + eps)
         
-        # 6. ROLLING FEATURES (20)
+        # ========================================
+        # 6. ROLLING FEATURES (20 features)
+        # ========================================
+        # Update buffers
         self.mid_price_0_buffer.append(mid_price_0)
         self.spread_0_buffer.append(spread_0)
         self.vol_imbal_total_buffer.append(vol_imbal_total)
         self.micro_price_deviation_buffer.append(micro_price_deviation)
         self.depth_imbal_near_buffer.append(depth_imbal_near)
         
-        features.extend(self._compute_rolling_stats(self.mid_price_0_buffer, self.windows))
-        features.extend(self._compute_rolling_stats(self.spread_0_buffer, self.windows))
-        features.extend(self._compute_rolling_stats(self.vol_imbal_total_buffer, self.windows))
-        features.extend(self._compute_rolling_stats(self.micro_price_deviation_buffer, self.windows))
-        features.extend(self._compute_rolling_stats(self.depth_imbal_near_buffer, self.windows))
+        # mid_price_0 rolling (4 features)
+        rolling = self._compute_rolling_stats(self.mid_price_0_buffer, self.windows)
+        features['mid_price_0_roll_mean_3'] = rolling[0]
+        features['mid_price_0_roll_std_3'] = rolling[1]
+        features['mid_price_0_roll_mean_10'] = rolling[2]
+        features['mid_price_0_roll_std_10'] = rolling[3]
         
-        # 7. DIFF FEATURES (8)
-        diff_keys = ['p0', 'p6', 'mid_price_0', 'spread_0', 'vol_imbal_total',
-                     'micro_price', 'micro_price_deviation', 'depth_imbal_near']
-        diff_values = [p[0], p[6], mid_price_0, spread_0, vol_imbal_total,
-                       micro_price, micro_price_deviation, depth_imbal_near]
+        # spread_0 rolling (4 features)
+        rolling = self._compute_rolling_stats(self.spread_0_buffer, self.windows)
+        features['spread_0_roll_mean_3'] = rolling[0]
+        features['spread_0_roll_std_3'] = rolling[1]
+        features['spread_0_roll_mean_10'] = rolling[2]
+        features['spread_0_roll_std_10'] = rolling[3]
         
+        # vol_imbal_total rolling (4 features)
+        rolling = self._compute_rolling_stats(self.vol_imbal_total_buffer, self.windows)
+        features['vol_imbal_total_roll_mean_3'] = rolling[0]
+        features['vol_imbal_total_roll_std_3'] = rolling[1]
+        features['vol_imbal_total_roll_mean_10'] = rolling[2]
+        features['vol_imbal_total_roll_std_10'] = rolling[3]
+        
+        # micro_price_deviation rolling (4 features)
+        rolling = self._compute_rolling_stats(self.micro_price_deviation_buffer, self.windows)
+        features['micro_price_deviation_roll_mean_3'] = rolling[0]
+        features['micro_price_deviation_roll_std_3'] = rolling[1]
+        features['micro_price_deviation_roll_mean_10'] = rolling[2]
+        features['micro_price_deviation_roll_std_10'] = rolling[3]
+        
+        # depth_imbal_near rolling (4 features)
+        rolling = self._compute_rolling_stats(self.depth_imbal_near_buffer, self.windows)
+        features['depth_imbal_near_roll_mean_3'] = rolling[0]
+        features['depth_imbal_near_roll_std_3'] = rolling[1]
+        features['depth_imbal_near_roll_mean_10'] = rolling[2]
+        features['depth_imbal_near_roll_std_10'] = rolling[3]
+        
+        # ========================================
+        # 7. DIFF FEATURES (8 features)
+        # ========================================
         if self.step == 0:
-            features.extend([0.0] * len(diff_keys))
+            features['p0_diff'] = 0.0
+            features['p6_diff'] = 0.0
+            features['mid_price_0_diff'] = 0.0
+            features['spread_0_diff'] = 0.0
+            features['vol_imbal_total_diff'] = 0.0
+            features['micro_price_diff'] = 0.0
+            features['micro_price_deviation_diff'] = 0.0
+            features['depth_imbal_near_diff'] = 0.0
         else:
-            for key, val in zip(diff_keys, diff_values):
-                features.append(val - self.prev_values.get(key, val))
+            features['p0_diff'] = p[0] - self.prev_p0
+            features['p6_diff'] = p[6] - self.prev_p6
+            features['mid_price_0_diff'] = mid_price_0 - self.prev_mid_price_0
+            features['spread_0_diff'] = spread_0 - self.prev_spread_0
+            features['vol_imbal_total_diff'] = vol_imbal_total - self.prev_vol_imbal_total
+            features['micro_price_diff'] = micro_price - self.prev_micro_price
+            features['micro_price_deviation_diff'] = micro_price_deviation - self.prev_micro_price_deviation
+            features['depth_imbal_near_diff'] = depth_imbal_near - self.prev_depth_imbal_near
         
-        for key, val in zip(diff_keys, diff_values):
-            self.prev_values[key] = val
+        # Store current values for next diff
+        self.prev_p0 = p[0]
+        self.prev_p6 = p[6]
+        self.prev_mid_price_0 = mid_price_0
+        self.prev_spread_0 = spread_0
+        self.prev_vol_imbal_total = vol_imbal_total
+        self.prev_micro_price = micro_price
+        self.prev_micro_price_deviation = micro_price_deviation
+        self.prev_depth_imbal_near = depth_imbal_near
         
         self.step += 1
         
-        return np.array(features, dtype=np.float32)
+        # Build feature array in correct order
+        feature_array = np.array([features[name] for name in FEATURE_NAMES], dtype=np.float32)
+        return feature_array
     
-    def predict(self, step_data):
+    def predict(self, step_data, need_prediction):
         """Predict using CatBoost models."""
-        features = self.generate_features(step_data)
+        features = self.generate_features(step_data, need_prediction)
         features_2d = features.reshape(1, -1)
         
         t0_pred = self.model_t0.predict(features_2d)[0]
@@ -318,7 +433,7 @@ class EnsembleModel:
         
         # Get predictions from both models
         dl_pred = self.dl_predictor.predict(data_point.state, data_point.seq_ix)
-        cb_pred = self.cb_predictor.predict(data_point.state)
+        cb_pred = self.cb_predictor.predict(data_point.state, data_point.need_prediction)
         
         if not data_point.need_prediction:
             return None
@@ -368,7 +483,7 @@ if __name__ == "__main__":
             seq_ix = int(row[0])
             step_in_seq = int(row[1])
             need_prediction = bool(row[2])
-            lob_data = row[3:35].astype(np.float32)
+            lob_data = row[3:35].astype(np.float32)  # p0-p11, v0-v11, dp0-dp3, dv0-dv3
             labels = row[35:37]
             
             data_point = DataPoint(seq_ix, step_in_seq, need_prediction, lob_data)

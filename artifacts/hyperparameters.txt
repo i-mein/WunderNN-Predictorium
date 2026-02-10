@@ -1,0 +1,4 @@
+
+# Hyperparameters for exp_15: Enhanced CatBoost
+Trial 0 finished with value: 0.3119503756179969 and parameters: {'iterations': 3000, 'learning_rate': 0.09237421878009823, 'depth': 9, 'l2_leaf_reg': 6.387926357773329, 'random_strength': 0.3964354168406294, 'bagging_temperature': 0.15599452033620265, 'min_data_in_leaf': 2}. Best is trial 0 with value: 0.3119503756179969.
+Best trial: 0. Best value: 0.31195
