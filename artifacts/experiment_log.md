@@ -20,4 +20,7 @@
 | **exp_16** | Catboost (X features) | Pending | Pending | - |
 | **exp_17** | Enhanced Hybrid (d=160, 3 layers, DeltaProcessor, 10 eng features) | 0.3362 | 0.1679 | t0: 0.3129, t1: 0.3595. Overfit on t1 - high val but poor LB. Model too complex. |
 | **exp_18** | Multi-Stream GRU (4 streams: price/vol/dprice/dvol, 154K params) | 0.2196 | Pending | t0: 0.3292, t1: 0.1100. Separate GRU per feature category, leakage-free eng features. |
-| **exp_19** | Conv2D LOB (DeepLOB-inspired, 123 diff features, 19K params) | Training | Pending | Conv2D for 2D LOB representation, extensive temporal diffs (1st/2nd order), causal convolutions. |
+| **exp_19** | Conv2D LOB (DeepLOB-inspired, 123 diff features, 19K params) | 0.1667 | Skip | t0: 0.2590, t1: 0.0743. Conv2D underperformed - GRU-based approaches better for this task. |
+| **exp_20** | Ensemble (exp_01 55% + exp_13 45%) | 0.2746 | **0.2858** | t0: 0.4030, t1: 0.1461. **NEW BEST LB!** Weighted average of exp_01 (GRU) and exp_13 (Hybrid). |
+| **exp_21** | Multi-Stream GRU + Temporal Attention (399K params) | Pending | Pending | Multi-stream + temporal attention + cross-stream attention. Initial run had leakage in CrossStreamAttention (missing causal mask) - fixed. |
+| **exp_22** | 2D Reshaped Temporal Conv (100x32 → 10x10x32, 1.36M params) | 0.0266 | Skip | t0: -0.04, t1: 0.09. Failed - 2D spatial structure doesn't capture temporal dynamics. |
