@@ -10,13 +10,14 @@
 | **exp_06** | Unidirectional GRU + Leakage-Free Features (65 feats), Weighted MSE | 0.2577 | 0.2634 | Fixed leakage from exp_03-05. Clean validation (t0: 0.3707, t1: 0.1447). |
 | **exp_07** | Dual-Head Dual-Stream (CNN+GRU), Pearson Loss | 0.3947 | TIMEOUT | Inflated val score suggests leakage in additional features. Timeout (70+ min) due to pandas per-step. |
 | **exp_09** | Dual-Head GRU + Pearson Loss (exp_06 features) | Pending | Pending | Combines exp_07's dual-head + Pearson loss with exp_06's leakage-free features and fast NumPy inference. |
-| **exp_10** | DeepLOB-style CNN-GRU (Inception + GRU, 32 raw features) | 0.5952 | Pending | t0: 0.7802, t1: 0.4101. Very high val score - likely has symmetric padding leakage in CNN. Best at epoch 13. |
+| **exp_10** | DeepLOB-style CNN-GRU (Inception + GRU, 32 raw features) | 0.5952 | 0.1005 | t0: 0.7802, t1: 0.4101. Symmetric padding leakage in CNN confirmed by poor LB. |
+| **exp_10b** | DeepLOB-style CNN-GRU with CAUSAL convolutions | 0.1664 | Pending | t0: 0.2671, t1: 0.0657. Causal fix worked - realistic val score now. |
 | **exp_11** | - | Pending | Pending | - |
 | **exp_12** | - | Pending | Pending | - |
-| **exp_13** | - | Pending | Pending | - |
+| **exp_13** | Hybrid Transformer-GRU (d=128, 2 layers, 7 eng features) | 0.2115 | **0.2262** | t0: 0.3221, t1: 0.1010. Single-step inference. Good LB generalization! |
 | **exp_14** | Catboost (66 features) | 0.1975 | Pending |  t0: 0.3096 ± 0.0001, t1: 0.0853 ± 0.0004 |
 | **exp_15** | Catboost (100 features) | 0.1980 | Pending | t0: 0.3130 ± 0.0002, t1: 0.0830 ± 0.0007 |
 | **exp_16** | Catboost (X features) | Pending | Pending | - |
-| **exp_17** | - | Pending | Pending | - |
-| **exp_18** | - | Pending | Pending | - |
-| **exp_19** | - | Pending | Pending | - |
+| **exp_17** | Enhanced Hybrid (d=160, 3 layers, DeltaProcessor, 10 eng features) | 0.3362 | 0.1679 | t0: 0.3129, t1: 0.3595. Overfit on t1 - high val but poor LB. Model too complex. |
+| **exp_18** | Multi-Stream GRU (4 streams: price/vol/dprice/dvol, 154K params) | 0.2196 | Pending | t0: 0.3292, t1: 0.1100. Separate GRU per feature category, leakage-free eng features. |
+| **exp_19** | Conv2D LOB (DeepLOB-inspired, 123 diff features, 19K params) | Training | Pending | Conv2D for 2D LOB representation, extensive temporal diffs (1st/2nd order), causal convolutions. |

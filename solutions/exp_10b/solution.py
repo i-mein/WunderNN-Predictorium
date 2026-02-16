@@ -1,8 +1,9 @@
 """
-Solution for exp_10: DeepLOB-style CNN-GRU Architecture
+Solution for exp_10b: DeepLOB-style CNN-GRU with CAUSAL Convolutions
 
 Inference wrapper for submission.
-Uses raw 32 features (like exp_01) with CNN-GRU architecture.
+Uses raw 32 features (like exp_01) with CAUSAL CNN-GRU architecture.
+exp_10b FIX: Uses causal convolutions (left-only padding) to prevent future leakage.
 """
 
 from typing import Tuple
@@ -10,20 +11,42 @@ from pathlib import Path
 import numpy as np
 import torch
 import torch.nn as nn
+import torch.nn.functional as F
 
 
 # ============================================================================
 # Model Architecture (included for standalone submission)
 # ============================================================================
 
-class InceptionModule(nn.Module):
+class CausalConv1d(nn.Module):
     """
-    Inception-style module with multiple kernel sizes.
+    Causal 1D Convolution - only looks at past and present, never future.
     
-    Captures patterns at different temporal scales:
-    - kernel=1: Point-wise features
-    - kernel=3: Short-term patterns
-    - kernel=5: Medium-term patterns
+    Uses left-only padding: pad (kernel_size - 1) on the left, 0 on the right.
+    """
+    
+    def __init__(self, in_channels, out_channels, kernel_size, dilation=1):
+        super().__init__()
+        self.kernel_size = kernel_size
+        self.dilation = dilation
+        self.padding = (kernel_size - 1) * dilation
+        
+        self.conv = nn.Conv1d(
+            in_channels, out_channels, kernel_size,
+            padding=0,
+            dilation=dilation
+        )
+    
+    def forward(self, x):
+        x_padded = F.pad(x, (self.padding, 0))
+        out = self.conv(x_padded)
+        return out
+
+
+class CausalInceptionModule(nn.Module):
+    """
+    CAUSAL Inception-style module with multiple kernel sizes.
+    Uses left-only padding to prevent future leakage.
     """
     
     def __init__(self, in_channels, out_channels_per_branch, kernel_sizes=[1, 3, 5], dropout=0.2):
@@ -32,7 +55,7 @@ class InceptionModule(nn.Module):
         self.branches = nn.ModuleList()
         for k in kernel_sizes:
             branch = nn.Sequential(
-                nn.Conv1d(in_channels, out_channels_per_branch, kernel_size=k, padding=k//2),
+                CausalConv1d(in_channels, out_channels_per_branch, kernel_size=k),
                 nn.BatchNorm1d(out_channels_per_branch),
                 nn.LeakyReLU(0.1),
             )
@@ -49,7 +72,7 @@ class InceptionModule(nn.Module):
 
 
 class DeepLOBGRU(nn.Module):
-    """DeepLOB-style CNN-GRU with dual heads."""
+    """DeepLOB-style CAUSAL CNN-GRU with dual heads."""
     
     def __init__(
         self,
@@ -73,9 +96,9 @@ class DeepLOBGRU(nn.Module):
         inception1_out = inception1_filters * len(kernel_sizes)
         inception2_out = inception2_filters * len(kernel_sizes)
         
-        # CNN Feature Extractor
-        self.inception1 = InceptionModule(input_dim, inception1_filters, kernel_sizes, dropout_cnn)
-        self.inception2 = InceptionModule(inception1_out, inception2_filters, kernel_sizes, dropout_cnn)
+        # CAUSAL CNN Feature Extractor
+        self.inception1 = CausalInceptionModule(input_dim, inception1_filters, kernel_sizes, dropout_cnn)
+        self.inception2 = CausalInceptionModule(inception1_out, inception2_filters, kernel_sizes, dropout_cnn)
         
         # GRU
         self.gru = nn.GRU(

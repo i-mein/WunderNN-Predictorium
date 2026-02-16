@@ -5,25 +5,34 @@ Inference wrapper for submission.
 Uses raw 32 features (like exp_01) with CNN-GRU architecture.
 """
 
-from typing import Tuple
-from pathlib import Path
+import os
+import sys
 import numpy as np
 import torch
 import torch.nn as nn
 
+# Add paths for imports
+CURRENT_DIR = os.path.dirname(os.path.abspath(__file__))
+sys.path.append(CURRENT_DIR)
+sys.path.append(os.path.join(CURRENT_DIR, "src"))
+
+try:
+    from src.utils import DataPoint, ScorerStepByStep
+except ImportError:
+    try:
+        from utils import DataPoint, ScorerStepByStep
+    except ImportError:
+        DataPoint = None
+        ScorerStepByStep = None
+
 
 # ============================================================================
-# Model Architecture (included for standalone submission)
+# Model Architecture (must match src/model.py exactly)
 # ============================================================================
 
 class InceptionModule(nn.Module):
     """
     Inception-style module with multiple kernel sizes.
-    
-    Captures patterns at different temporal scales:
-    - kernel=1: Point-wise features
-    - kernel=3: Short-term patterns
-    - kernel=5: Medium-term patterns
     """
     
     def __init__(self, in_channels, out_channels_per_branch, kernel_sizes=[1, 3, 5], dropout=0.2):
@@ -49,7 +58,10 @@ class InceptionModule(nn.Module):
 
 
 class DeepLOBGRU(nn.Module):
-    """DeepLOB-style CNN-GRU with dual heads."""
+    """
+    DeepLOB-style architecture: Inception CNN → GRU → Dual Heads
+    Must match the trained model architecture exactly.
+    """
     
     def __init__(
         self,
@@ -68,284 +80,227 @@ class DeepLOBGRU(nn.Module):
         super().__init__()
         
         self.gru_hidden = gru_hidden
+        self.gru_layers = gru_layers
         
-        # Total channels from inception = filters_per_branch * num_kernels
-        inception1_out = inception1_filters * len(kernel_sizes)
-        inception2_out = inception2_filters * len(kernel_sizes)
+        # Input normalization
+        self.input_norm = nn.LayerNorm(input_dim)
         
-        # CNN Feature Extractor
-        self.inception1 = InceptionModule(input_dim, inception1_filters, kernel_sizes, dropout_cnn)
-        self.inception2 = InceptionModule(inception1_out, inception2_filters, kernel_sizes, dropout_cnn)
+        # Inception Module 1
+        self.inception1 = InceptionModule(
+            in_channels=input_dim,
+            out_channels_per_branch=inception1_filters,
+            kernel_sizes=kernel_sizes,
+            dropout=dropout_cnn
+        )
+        inception1_out = inception1_filters * len(kernel_sizes)  # 48
         
-        # GRU
+        # Inception Module 2
+        self.inception2 = InceptionModule(
+            in_channels=inception1_out,
+            out_channels_per_branch=inception2_filters,
+            kernel_sizes=kernel_sizes,
+            dropout=dropout_cnn
+        )
+        inception2_out = inception2_filters * len(kernel_sizes)  # 48
+        
+        # GRU for temporal modeling
         self.gru = nn.GRU(
             input_size=inception2_out,
             hidden_size=gru_hidden,
             num_layers=gru_layers,
             batch_first=True,
-            dropout=dropout_gru if gru_layers > 1 else 0,
-            bidirectional=False
+            bidirectional=False,
+            dropout=dropout_gru if gru_layers > 1 else 0.0
         )
         
-        # Dual Heads
-        self.head_t0 = nn.Sequential(
+        # Layer norm after GRU
+        self.gru_norm = nn.LayerNorm(gru_hidden)
+        
+        # t0 head
+        self.t0_head = nn.Sequential(
             nn.Linear(gru_hidden, head_hidden),
-            nn.LeakyReLU(0.1),
+            nn.GELU(),
             nn.Dropout(dropout_t0),
             nn.Linear(head_hidden, 1)
         )
         
-        self.head_t1 = nn.Sequential(
+        # t1 head
+        self.t1_head = nn.Sequential(
             nn.Linear(gru_hidden, head_hidden),
-            nn.LeakyReLU(0.1),
+            nn.GELU(),
             nn.Dropout(dropout_t1),
             nn.Linear(head_hidden, 1)
         )
-        
-        self._init_weights()
-    
-    def _init_weights(self):
-        for name, param in self.named_parameters():
-            if 'weight' in name and param.dim() >= 2:
-                nn.init.xavier_uniform_(param)
-            elif 'bias' in name:
-                nn.init.zeros_(param)
     
     def forward(self, x, hidden=None):
         """
+        Forward pass.
+        
         Args:
-            x: (batch, seq_len, features) or (seq_len, features)
+            x: Input tensor of shape (batch, seq_len, input_dim)
+            hidden: GRU hidden state from previous step (optional)
+        
         Returns:
-            pred_t0, pred_t1, hidden
+            pred_t0: Predictions for t0 (batch, seq_len, 1)
+            pred_t1: Predictions for t1 (batch, seq_len, 1)
+            hidden: Updated GRU hidden state
         """
-        # Handle unbatched input
-        if x.dim() == 2:
-            x = x.unsqueeze(0)
+        batch_size = x.shape[0]
+        seq_len = x.shape[1]
         
-        batch_size, seq_len, _ = x.shape
+        # Normalize input
+        x = self.input_norm(x)
         
-        # CNN expects (batch, channels, seq_len)
-        x_cnn = x.permute(0, 2, 1)
+        # Transpose for Conv1d: (batch, features, seq)
+        x = x.transpose(1, 2)
         
-        # CNN feature extraction
-        cnn_out = self.inception1(x_cnn)
-        cnn_out = self.inception2(cnn_out)  # (batch, filters, seq_len)
+        # Inception modules
+        x = self.inception1(x)
+        x = self.inception2(x)
         
-        # Back to (batch, seq_len, filters)
-        cnn_out = cnn_out.permute(0, 2, 1)
+        # Transpose back for GRU: (batch, seq, features)
+        x = x.transpose(1, 2)
         
         # GRU
-        gru_out, hidden = self.gru(cnn_out, hidden)
+        gru_out, hidden = self.gru(x, hidden)
+        
+        # Layer norm
+        gru_out = self.gru_norm(gru_out)
         
         # Dual heads
-        pred_t0 = self.head_t0(gru_out)  # (batch, seq_len, 1)
-        pred_t1 = self.head_t1(gru_out)
+        pred_t0 = self.t0_head(gru_out)
+        pred_t1 = self.t1_head(gru_out)
         
         return pred_t0, pred_t1, hidden
 
 
 # ============================================================================
-# Feature Definitions
+# PredictionModel Class (required interface for submission)
 # ============================================================================
 
-# Raw features (32 total) - same as exp_01
-PRICE_COLS = [f'p{i}' for i in range(12)]  # 12 price levels
-VOLUME_COLS = [f'v{i}' for i in range(12)]  # 12 volume levels
-DELTA_P_COLS = [f'dp{i}' for i in range(4)]  # 4 price deltas
-DELTA_V_COLS = [f'dv{i}' for i in range(4)]  # 4 volume deltas
-
-RAW_FEATURES = PRICE_COLS + VOLUME_COLS + DELTA_P_COLS + DELTA_V_COLS  # 32 features
-
-
-# ============================================================================
-# Solution Class
-# ============================================================================
-
-class Solution:
+class PredictionModel:
     """
-    Inference solution for exp_10: DeepLOB-style CNN-GRU.
-    
+    DeepLOB-style CNN-GRU Solution (exp_10).
     Stateful inference - maintains GRU hidden state across calls.
     """
-    
-    def __init__(self):
-        self.model = None
-        self.device = None
+
+    def __init__(self, model_path=""):
+        self.current_seq_ix = None
         self.hidden = None
         
-        # Normalization parameters (will be loaded from checkpoint)
-        self.means = None
-        self.stds = None
+        # Determine paths
+        base_dir = os.path.dirname(os.path.abspath(__file__))
+        if not model_path:
+            model_path = os.path.join(base_dir, "best_model.pth")
         
-        # Model config (defaults matching config.py, may be overridden by checkpoint)
-        self.model_config = {
-            'input_dim': 32,
-            'inception1_filters': 16,
-            'inception2_filters': 16,
-            'kernel_sizes': [1, 3, 5],
-            'gru_hidden': 128,
-            'gru_layers': 2,
-            'head_hidden': 64,
-            'dropout_cnn': 0.0,   # No dropout at inference
-            'dropout_gru': 0.0,
-            'dropout_t0': 0.0,
-            'dropout_t1': 0.0,
-        }
-    
-    def init(self, **kwargs) -> None:
-        """Initialize model and load weights."""
-        
-        # Device selection
-        if torch.cuda.is_available():
-            self.device = torch.device('cuda')
-        elif torch.backends.mps.is_available():
-            self.device = torch.device('mps')
-        else:
-            self.device = torch.device('cpu')
+        if not os.path.exists(model_path):
+            model_path = os.path.join(base_dir, "..", "..", "best_model.pth")
+
+        self.device = torch.device("cpu")
         
         # Load checkpoint
-        model_path = Path(__file__).parent / 'best_model.pth'
-        checkpoint = torch.load(model_path, map_location=self.device, weights_only=False)
-        
-        # Get model config from checkpoint
-        if 'model_config' in checkpoint:
-            saved_config = checkpoint['model_config']
-            # Update model config (but keep dropout at 0 for inference)
-            for key in ['input_dim', 'inception1_filters', 'inception2_filters', 
-                        'kernel_sizes', 'gru_hidden', 'gru_layers', 'head_hidden']:
-                if key in saved_config:
-                    self.model_config[key] = saved_config[key]
-        
-        # Create model
-        self.model = DeepLOBGRU(**self.model_config)
-        
-        # Load weights
-        self.model.load_state_dict(checkpoint['model_state_dict'])
-        self.model = self.model.to(self.device)
-        self.model.eval()
-        
-        # Load normalization parameters
-        if 'normalization' in checkpoint:
-            norm = checkpoint['normalization']
-            self.means = torch.tensor(norm['means'], dtype=torch.float32, device=self.device)
-            self.stds = torch.tensor(norm['stds'], dtype=torch.float32, device=self.device)
-        else:
-            # Default: no normalization
+        try:
+            checkpoint = torch.load(model_path, map_location=self.device, weights_only=False)
+            
+            # Get model config from checkpoint
+            model_config = checkpoint.get('model_config', {})
+            
+            # Create model with config (set dropout to 0 for inference)
+            self.model = DeepLOBGRU(
+                input_dim=model_config.get('input_dim', 32),
+                inception1_filters=model_config.get('inception1_filters', 16),
+                inception2_filters=model_config.get('inception2_filters', 16),
+                kernel_sizes=model_config.get('kernel_sizes', [1, 3, 5]),
+                gru_hidden=model_config.get('gru_hidden', 128),
+                gru_layers=model_config.get('gru_layers', 2),
+                head_hidden=model_config.get('head_hidden', 64),
+                dropout_cnn=0.0,  # No dropout at inference
+                dropout_gru=0.0,
+                dropout_t0=0.0,
+                dropout_t1=0.0,
+            )
+            
+            # Load weights
+            self.model.load_state_dict(checkpoint['model_state_dict'])
+            self.model.to(self.device)
+            self.model.eval()
+            
+            # Load normalization parameters
+            if 'normalization' in checkpoint:
+                norm = checkpoint['normalization']
+                # Keys are 'mean' and 'std' (not 'means' and 'stds')
+                self.means = torch.tensor(norm['mean'], dtype=torch.float32, device=self.device).squeeze()
+                self.stds = torch.tensor(norm['std'], dtype=torch.float32, device=self.device).squeeze()
+            else:
+                self.means = torch.zeros(32, device=self.device)
+                self.stds = torch.ones(32, device=self.device)
+            
+            print(f"Loaded DeepLOB-GRU model from {model_path}")
+            
+        except Exception as e:
+            print(f"Error loading model: {e}")
+            import traceback
+            traceback.print_exc()
+            self.model = None
             self.means = torch.zeros(32, device=self.device)
             self.stds = torch.ones(32, device=self.device)
-        
-        # Initialize hidden state
-        self.hidden = None
-    
-    def __call__(self, input_dict: dict) -> Tuple[float, float]:
+
+    def predict(self, data_point) -> np.ndarray:
         """
-        Make prediction for a single timestep.
+        Predict for a single data point.
         
         Args:
-            input_dict: Dictionary with keys p0-p11, v0-v11, dp0-dp3, dv0-dv3
-            
+            data_point: DataPoint with seq_ix, step_in_seq, need_prediction, state
+        
         Returns:
-            Tuple of (t0_prediction, t1_prediction)
+            Prediction array of shape (2,) if need_prediction, else None
         """
-        
-        # Extract features in correct order
-        features = []
-        for col in RAW_FEATURES:
-            value = input_dict.get(col, 0.0)
-            if value is None or (isinstance(value, float) and np.isnan(value)):
-                value = 0.0
-            features.append(float(value))
-        
-        # Convert to tensor
-        x = torch.tensor(features, dtype=torch.float32, device=self.device)
+        # Reset state on new sequence
+        if self.current_seq_ix != data_point.seq_ix:
+            self.current_seq_ix = data_point.seq_ix
+            self.hidden = None
+
+        if self.model is None:
+            return np.zeros(2) if data_point.need_prediction else None
+
+        # Prepare input: data_point.state is a numpy array of 32 features
+        x = torch.tensor(data_point.state, dtype=torch.float32, device=self.device)
         
         # Normalize
         x = (x - self.means) / (self.stds + 1e-8)
         
-        # Add batch and sequence dimensions: (1, 1, features)
+        # Add batch and sequence dimensions: (1, 1, 32)
         x = x.unsqueeze(0).unsqueeze(0)
         
         # Forward pass
         with torch.no_grad():
             pred_t0, pred_t1, self.hidden = self.model(x, self.hidden)
         
+        if not data_point.need_prediction:
+            return None
+        
         # Extract predictions
         t0 = pred_t0[0, 0, 0].item()
         t1 = pred_t1[0, 0, 0].item()
         
-        return (t0, t1)
-    
-    def reset(self) -> None:
-        """Reset hidden state for new sequence."""
-        self.hidden = None
+        return np.array([t0, t1])
 
-
-# ============================================================================
-# Batch inference (for validation)
-# ============================================================================
-
-def batch_predict(model, data_df, device, means, stds):
-    """
-    Batch prediction for validation.
-    
-    Args:
-        model: The DeepLOBGRU model
-        data_df: DataFrame with raw features
-        device: torch device
-        means, stds: normalization parameters
-        
-    Returns:
-        Array of predictions (N, 2) for t0 and t1
-    """
-    model.eval()
-    
-    # Extract features
-    X = data_df[RAW_FEATURES].values.astype(np.float32)
-    
-    # Normalize
-    X = (X - means) / (stds + 1e-8)
-    
-    # Convert to tensor
-    X_tensor = torch.tensor(X, dtype=torch.float32, device=device)
-    
-    # Process in sequence (stateful)
-    predictions = []
-    hidden = None
-    
-    batch_size = 1000  # Process in chunks
-    
-    with torch.no_grad():
-        for i in range(0, len(X_tensor), batch_size):
-            batch = X_tensor[i:i+batch_size].unsqueeze(0)  # (1, chunk, features)
-            pred_t0, pred_t1, hidden = model(batch, hidden)
-            
-            preds = torch.cat([pred_t0, pred_t1], dim=-1)  # (1, chunk, 2)
-            predictions.append(preds.squeeze(0).cpu().numpy())
-    
-    return np.concatenate(predictions, axis=0)
-
-
-# ============================================================================
-# Main (for testing)
-# ============================================================================
 
 if __name__ == "__main__":
-    import sys
+    # Local testing
+    test_file = os.path.join(CURRENT_DIR, "..", "..", "datasets", "valid.parquet")
     
-    print("Testing Solution class...")
-    
-    # Create solution
-    solution = Solution()
-    solution.init()
-    
-    print(f"Model loaded on device: {solution.device}")
-    
-    # Test with dummy input
-    dummy_input = {col: 0.0 for col in RAW_FEATURES}
-    dummy_input['p0'] = 100.0
-    dummy_input['v0'] = 1000.0
-    
-    t0, t1 = solution(dummy_input)
-    print(f"Test prediction: t0={t0:.4f}, t1={t1:.4f}")
-    
-    print("Solution test passed!")
+    if os.path.exists(test_file) and ScorerStepByStep is not None:
+        print("Testing exp_10 solution...")
+        model = PredictionModel()
+        scorer = ScorerStepByStep(test_file)
+        
+        print("\nRunning validation...")
+        results = scorer.score(model)
+        
+        print("\nResults:")
+        print(f"Mean Weighted Pearson correlation: {results['weighted_pearson']:.6f}")
+        for target in scorer.targets:
+            print(f"  {target}: {results[target]:.6f}")
+    else:
+        print(f"Validation file not found at {test_file} or ScorerStepByStep not available")
