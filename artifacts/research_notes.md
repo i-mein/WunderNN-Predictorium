@@ -50,6 +50,23 @@
 - Complex attention across full sequence (overfitting)
 - Very deep networks (overfitting)
 
+## Updated Results (Feb 2026)
+
+### Best Results So Far
+| Exp | Val Score | LB Score | Notes |
+|-----|-----------|----------|-------|
+| exp_20 | 0.2746 | **0.2858** | Ensemble (GRU 55% + Hybrid 45%) - BEST |
+| exp_01 | 0.2310 | 0.2820 | Simple GRU, raw features |
+| exp_02 | 0.2691 | 0.2766 | GRU + 49 engineered features |
+| exp_13 | 0.2115 | 0.2262 | Hybrid Transformer-GRU |
+
+### Failed Approaches
+- exp_22 (2D Reshape Conv): 0.0266 val - 2D spatial structure doesn't work
+- exp_21 (Multi-Stream Attention): 0.2009 val - worse than ensemble
+- exp_03-05, exp_10: Leakage issues
+
+### Gap to Leader: 0.324 - 0.2858 = 0.0382 (~4 percentage points)
+
 ## Feature Engineering Best Practices
 
 ### Safe Features (No Look-Ahead)
@@ -86,24 +103,81 @@
 3. **Batch**: Process full sequences during training
 4. **Single-step**: Carry hidden state during inference
 
-## Next Experiments to Try
+## Next Experiments to Try (Priority Order)
 
-### exp_20: Simpler Conv1D
-- 1D causal convolutions on raw features
-- Dilated convolutions for multi-scale
-- GRU for final temporal modeling
+### HIGH PRIORITY - Quick Wins
 
-### exp_21: Attention-Only
-- Local attention (window = 50)
-- Relative positional encoding
-- No RNN component
+#### exp_23: Enhanced Feature Engineering for GRU
+Based on DeepLOB and LOB research:
+- **Micro-price**: `p_micro = (p_ask * v_bid + p_bid * v_ask) / (v_bid + v_ask)`
+- **Order Flow Imbalance (OFI)**: `Δv_bid[0] - Δv_ask[0]` 
+- **Weighted price pressure**: Sum of volume-weighted imbalances across levels
+- **Price levels correlation**: Rolling corr between bid/ask at different levels
+- Apply to exp_01 base (simple GRU) architecture
 
-### exp_22: Feature Selection
-- Use exp_13 features with exp_01 architecture
-- Focus on most predictive features
-- L1 regularization for sparsity
+#### exp_24: Better Ensemble Weights
+- Grid search exp_01 + exp_13 weights (test 60/40, 50/50, 70/30)
+- Consider 3-model ensemble: exp_01 + exp_02 + exp_13
+- Try stacking: train logistic regression on validation predictions
 
-### exp_23: Ensemble
-- Combine exp_01, exp_13, best Conv2D
-- Simple averaging or learned weights
-- Diversity through different architectures
+#### exp_25: Direct Pearson Loss
+- Train exp_01 with Pearson correlation loss instead of MSE
+- Pearson loss: `1 - correlation(pred, target)`
+- May converge slower but directly optimizes competition metric
+
+### MEDIUM PRIORITY - Architecture Improvements
+
+#### exp_26: Temporal Convolutional Network (TCN) + GRU
+- Dilated causal convolutions: receptive field grows exponentially
+- Structure: `Input → DilatedConv(d=1,2,4,8) → GRU → Output`
+- **MUST use left (causal) padding only**
+
+#### exp_27: Layer Norm GRU + Residual
+- Replace standard GRU with LayerNorm GRU
+- Add residual connections between layers
+- More stable training, potentially better generalization
+
+#### exp_28: Separate t0/t1 Models
+- Since t1 << t0 in performance, train specialized models
+- Model A: Optimized for t0 (2/3 weight)
+- Model B: Optimized for t1 (1/3 weight)
+- Ensemble at inference
+
+### LOWER PRIORITY - Research Ideas
+
+#### exp_29: Temporal Fusion Transformer (Simplified)
+- Variable selection network for feature importance
+- Multi-head attention with positional encoding
+- Interpretable attention weights
+
+#### exp_30: Data Augmentation
+- Add small noise to prices/volumes during training
+- Mixup between similar sequences
+- Time warping (stretch/compress sequences)
+
+---
+
+## Key Insights from Literature
+
+### DeepLOB Architecture (Zhang et al., 2019)
+- CNN layers capture spatial structure of LOB levels
+- LSTM captures temporal dependencies
+- Achieves 80%+ accuracy on FI-2010 (direction classification)
+- Our task is regression, but patterns may transfer
+
+### Autoformer (Wu et al., 2021)
+- Series decomposition into trend + seasonal
+- Auto-correlation mechanism better than attention for periodic data
+- 38% improvement on long-term forecasting benchmarks
+- Could help with t1 (longer horizon) prediction
+
+### Optiver Competition Insights
+- GBDTs (LightGBM, CatBoost) often outperform neural nets on tabular LOB data
+- Cross-sectional features (compare current stock to market) are valuable
+- Volume imbalance features consistently important
+
+### t1 vs t0 Analysis
+- t1 consistently ~30-35% of t0 correlation
+- Weighted metric: 2/3 * t0 + 1/3 * t1
+- **Focus on t0 first** - improving t0 by 0.03 ≈ improving t1 by 0.06
+

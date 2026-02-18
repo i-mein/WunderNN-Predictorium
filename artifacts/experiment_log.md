@@ -22,5 +22,7 @@
 | **exp_18** | Multi-Stream GRU (4 streams: price/vol/dprice/dvol, 154K params) | 0.2196 | Pending | t0: 0.3292, t1: 0.1100. Separate GRU per feature category, leakage-free eng features. |
 | **exp_19** | Conv2D LOB (DeepLOB-inspired, 123 diff features, 19K params) | 0.1667 | Skip | t0: 0.2590, t1: 0.0743. Conv2D underperformed - GRU-based approaches better for this task. |
 | **exp_20** | Ensemble (exp_01 55% + exp_13 45%) | 0.2746 | **0.2858** | t0: 0.4030, t1: 0.1461. **NEW BEST LB!** Weighted average of exp_01 (GRU) and exp_13 (Hybrid). |
-| **exp_21** | Multi-Stream GRU + Temporal Attention (399K params) | Pending | Pending | Multi-stream + temporal attention + cross-stream attention. Initial run had leakage in CrossStreamAttention (missing causal mask) - fixed. |
+| **exp_21** | Multi-Stream GRU + Temporal Attention (399K params) | 0.2009 | Skip | t0: 0.3032, t1: 0.0985. Causal mask fixed. Worse than exp_20 ensemble - skip LB submission. |
 | **exp_22** | 2D Reshaped Temporal Conv (100x32 → 10x10x32, 1.36M params) | 0.0266 | Skip | t0: -0.04, t1: 0.09. Failed - 2D spatial structure doesn't capture temporal dynamics. |
+| **exp_23** | TCN+GRU + Enhanced Features (micro-price, OFI, WPP, 285K params) | 0.2214 | Pending | t0: 0.2940, t1: 0.1492. 47 features (32 raw + 15 enhanced). Dilated causal conv + GRU. |
+| **exp_24** | LiT-inspired Transformer + GRU (Patch Embed, Causal Attn, 291K params) | **0.3047** | Pending | t0: 0.28, t1: 0.31. Strong t1! Based on LOB Transformer paper. Good ensemble candidate. |
