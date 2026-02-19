@@ -293,8 +293,7 @@ if __name__ == "__main__":
         results = scorer.score(model)
         
         print("\nResults:")
-        print(f"Mean Weighted Pearson correlation: {results['weighted_pearson']:.6f}")
-        for target in ['t0', 't1']:
-            print(f"  {target}: {results[target]:.6f}")
+        print(results)
+
     else:
         print(f"Validation file not found at {test_file}")

@@ -24,5 +24,5 @@
 | **exp_20** | Ensemble (exp_01 55% + exp_13 45%) | 0.2746 | **0.2858** | t0: 0.4030, t1: 0.1461. **NEW BEST LB!** Weighted average of exp_01 (GRU) and exp_13 (Hybrid). |
 | **exp_21** | Multi-Stream GRU + Temporal Attention (399K params) | 0.2009 | Skip | t0: 0.3032, t1: 0.0985. Causal mask fixed. Worse than exp_20 ensemble - skip LB submission. |
 | **exp_22** | 2D Reshaped Temporal Conv (100x32 → 10x10x32, 1.36M params) | 0.0266 | Skip | t0: -0.04, t1: 0.09. Failed - 2D spatial structure doesn't capture temporal dynamics. |
-| **exp_23** | TCN+GRU + Enhanced Features (micro-price, OFI, WPP, 285K params) | 0.2214 | Pending | t0: 0.2940, t1: 0.1492. 47 features (32 raw + 15 enhanced). Dilated causal conv + GRU. |
-| **exp_24** | LiT-inspired Transformer + GRU (Patch Embed, Causal Attn, 291K params) | **0.3047** | Pending | t0: 0.28, t1: 0.31. Strong t1! Based on LOB Transformer paper. Good ensemble candidate. |
+| **exp_23** | TCN+GRU + Enhanced Features (micro-price, OFI, WPP, 285K params) | **0.2679** | 0.2462 | t0: 0.3385, t1: 0.1267. 47 features. **PROMISING - revisit for improvements!** Good t0, Best t1! generalizes well. |
+| **exp_24** | LiT-inspired Transformer + GRU (Patch Embed, Causal Attn, 291K params) | **0.1773** | 0.1476 | Train-val: 0.3047 (leaky norm). Full-val: t0: 0.2575, t1: 0.0169. Normalization leakage: train uses full-seq z-score, inference uses online EMA. |
