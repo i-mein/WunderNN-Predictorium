@@ -37,7 +37,8 @@ MODEL_CONFIG = {
     "gru_layers": 2,
     
     # Pooling
-    "pool_type": "attention",    # Learnable attention pooling
+     "pool_type": "mean", 
+    # "pool_type": "attention",    # Learnable attention pooling
 }
 
 # Training Configuration
@@ -45,7 +46,7 @@ TRAIN_CONFIG = {
     "experiment": "exp_26_lob_vit_3x5",
     "dropout": 0.2,
     "batch_size": 4,        # Full sequence at a time
-    "epochs": 15,           # More epochs for larger model
+    "epochs": 30, #15,           # More epochs for larger model
     "learning_rate": 5e-4,  # Slightly lower for stability
     "weight_decay": 1e-4,
     "warmup_steps": 99,     # First 100 steps (0-99) used for warmup, not scored
