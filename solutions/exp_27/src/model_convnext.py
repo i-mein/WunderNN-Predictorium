@@ -224,8 +224,12 @@ class DropPath(nn.Module):
 
 class Downsample2d(nn.Module):
     """
-    Spatial downsampling with causal temporal handling.
-    Uses strided convolution with appropriate padding.
+    Spatial downsampling with CAUSAL temporal handling.
+    Uses strided convolution with left-only padding in temporal dimension.
+    
+    CRITICAL: Standard strided conv with kernel_size=stride causes leakage
+    because it looks at multiple timesteps including future ones.
+    Solution: Use causal padding (left-only) in the temporal (W) dimension.
     """
     
     def __init__(self, in_channels, out_channels, stride=(2, 2)):
@@ -236,8 +240,16 @@ class Downsample2d(nn.Module):
             stride = (stride, stride)
         self.stride = stride
         
-        # For causal downsampling, we need special handling
         # Use kernel_size = stride for non-overlapping patches
+        self.kernel_size = stride
+        
+        # Calculate causal padding for temporal dimension
+        # Height (levels): symmetric padding is OK (no temporal causality)
+        # Width (time): MUST use left-only (causal) padding
+        self.pad_h = stride[0] - 1  # For height: symmetric is fine
+        self.pad_w = stride[1] - 1  # For width: will be left-only (causal)
+        
+        # Conv with no padding - we'll handle padding manually for causality
         self.conv = nn.Conv2d(
             in_channels, out_channels, 
             kernel_size=stride, stride=stride, padding=0
@@ -245,6 +257,17 @@ class Downsample2d(nn.Module):
     
     def forward(self, x):
         x = self.norm(x)
+        
+        # Apply causal padding: (left, right, top, bottom)
+        # Width (temporal): left-only padding for causality
+        # Height (levels): symmetric padding (top/bottom split)
+        pad_top = self.pad_h // 2
+        pad_bottom = self.pad_h - pad_top
+        pad_left = self.pad_w  # ALL padding on left for causality
+        pad_right = 0          # NO padding on right
+        
+        x = F.pad(x, (pad_left, pad_right, pad_top, pad_bottom))
+        
         return self.conv(x)
 
 
@@ -290,11 +313,15 @@ class LOBConvNeXt(nn.Module):
         # Calculate spatial dimensions through network
         h, w = num_levels, window_size  # 12, 100
         
-        # Stem: patchify
-        self.stem = nn.Sequential(
-            nn.Conv2d(in_channels, dims[0], kernel_size=stem_stride, stride=stem_stride),
-            LayerNorm2d(dims[0])
-        )
+        # Stem: patchify with CAUSAL padding in temporal dimension
+        # kernel_size=stem_stride for non-overlapping patches
+        # CRITICAL: Must use left-only padding in temporal (W) dimension
+        self.stem_stride = stem_stride
+        self.stem_conv = nn.Conv2d(in_channels, dims[0], kernel_size=stem_stride, stride=stem_stride, padding=0)
+        self.stem_norm = LayerNorm2d(dims[0])
+        # Padding for causality: height (levels) symmetric, width (time) left-only
+        self.stem_pad_h = stem_stride[0] - 1
+        self.stem_pad_w = stem_stride[1] - 1  # Will be left-only
         h, w = h // stem_stride[0], w // stem_stride[1]  # 6, 25
         
         # Stochastic depth decay rule
@@ -392,8 +419,17 @@ class LOBConvNeXt(nn.Module):
         Returns:
             (B, final_w, dims[-1]) features ready for GRU
         """
-        # Stem
-        x = self.stem(x)
+        # Stem with CAUSAL padding
+        # Apply causal padding: (left, right, top, bottom)
+        # Width (temporal): left-only padding for causality
+        # Height (levels): symmetric padding
+        pad_top = self.stem_pad_h // 2
+        pad_bottom = self.stem_pad_h - pad_top
+        pad_left = self.stem_pad_w  # ALL padding on left for causality
+        pad_right = 0               # NO padding on right
+        x = F.pad(x, (pad_left, pad_right, pad_top, pad_bottom))
+        x = self.stem_conv(x)
+        x = self.stem_norm(x)
         
         # Stages with downsampling
         for downsample, stage in zip(self.downsamples, self.stages):
@@ -484,10 +520,11 @@ class LOBConvNeXt(nn.Module):
         # GRU
         x, hidden = self.gru(x, hidden)  # (B, final_w, gru_hidden)
         
-        # Upsample to original temporal resolution
-        # Use interpolation to go from final_w to window_size
+        # Upsample to original temporal resolution - CAUSAL method
+        # CRITICAL: Linear interpolation uses both neighbors (LEAKY!)
+        # Use 'nearest' which only repeats the LEFT value (CAUSAL)
         x = x.permute(0, 2, 1)  # (B, gru_hidden, final_w)
-        x = F.interpolate(x, size=W, mode='linear', align_corners=False)
+        x = F.interpolate(x, size=W, mode='nearest')
         x = x.permute(0, 2, 1)  # (B, W, gru_hidden)
         
         # Apply temporal projection

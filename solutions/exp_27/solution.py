@@ -28,7 +28,9 @@ class PredictionModel:
         self.running_var = None
         
         base_dir = os.path.dirname(os.path.abspath(__file__))
-        self.device = torch.device("cpu")
+        # self.device = torch.device("cpu")
+        self.device = torch.device("mps") if torch.backends.mps.is_available() else torch.device("cpu")
+
         
         # Load snapshot models for ensemble
         # Priority: 1) averaged_model.pth, 2) best_model_ep_*.pth, 3) best_model.pth
@@ -137,7 +139,7 @@ class PredictionModel:
             window = self.feature_buffer
         
         # Tensor shape: (1, window_size, 32)
-        window_tensor = torch.tensor(window, dtype=torch.float32).unsqueeze(0)
+        window_tensor = torch.tensor(window, dtype=torch.float32).unsqueeze(0).to(self.device)
         
         # Get predictions from all models and average
         all_predictions = []
@@ -147,7 +149,7 @@ class PredictionModel:
                 # forward() handles reshaping internally via LOBReshaper
                 # Input: (B, W, 32), Output: (B, 2)
                 output, self.hidden_states[i] = model(window_tensor, self.hidden_states[i])
-                all_predictions.append(output.numpy().flatten())
+                all_predictions.append(output.detach().cpu().numpy().flatten())
         
         if not data_point.need_prediction:
             return None
@@ -216,9 +218,10 @@ if __name__ == "__main__":
                         self.window_size = MODEL_CONFIG["window_size"]
                         self.running_mean = None
                         self.running_var = None
-                        self.device = torch.device("cpu")
+                        self.device = torch.device("mps") if torch.backends.mps.is_available() else torch.device("cpu")
                         self.norm_alpha = TRAIN_CONFIG.get("norm_ema_alpha", 0.01)
-                        
+                        print(f"Using device: {self.device}")
+
                         model = LOBViTModel(**get_model_kwargs(for_inference=True))
                         state_dict = torch.load(checkpoint_path, map_location=self.device, weights_only=True)
                         model.load_state_dict(state_dict)

@@ -23,6 +23,8 @@ from tqdm import tqdm
 import wandb
 import heapq
 
+# from solutions.exp_01.src import model
+
 # Add paths
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(SCRIPT_DIR)))
@@ -360,6 +362,8 @@ def main():
     if CONFIG["use_wandb"]:
         wandb.init(project=CONFIG["wandb_project"], name=CONFIG["experiment"], config=CONFIG)
     
+    output_dir = os.path.dirname(SCRIPT_DIR)
+
     # Load datasets with causal normalization
     train_path = os.path.join(PROJECT_ROOT, "datasets", "train.parquet")
     valid_path = os.path.join(PROJECT_ROOT, "datasets", "valid.parquet")
@@ -434,12 +438,21 @@ def main():
         
         current_score = val_results['weighted_score']
         
+        # Save checkpoint for THIS epoch immediately (for Full-Val during training)
+        checkpoint_path = os.path.join(output_dir, f"checkpoint_ep_{epoch}.pth")
+        torch.save(model.state_dict(), checkpoint_path)
+        print(f"*** Saved checkpoint: {checkpoint_path} ***")
+        
         # Track best overall
         if current_score > best_score:
             best_score = current_score
             best_epoch = epoch
-        
-        # Snapshot ensemble: keep top N checkpoints
+            # Save best_model.pth as symlink/copy of current best
+            best_path = os.path.join(output_dir, "best_model.pth")
+            torch.save(model.state_dict(), best_path)
+            print(f"*** New best! Saved: {best_path} (Score: {current_score:.4f}) ***")
+                    
+        # Snapshot ensemble: keep top N checkpoints in memory for final averaging
         state_dict_copy = {k: v.cpu().clone() for k, v in model.state_dict().items()}
         
         if len(best_checkpoints) < num_snapshots:
@@ -452,8 +465,6 @@ def main():
             print(f"*** New snapshot from epoch {epoch} (Score: {current_score:.4f}) ***")
     
     # Save all snapshot checkpoints with epoch numbers
-    output_dir = os.path.dirname(SCRIPT_DIR)
-    
     # Sort by score (best first)
     best_checkpoints.sort(key=lambda x: x[0], reverse=True)
     

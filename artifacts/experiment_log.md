@@ -26,3 +26,5 @@
 | **exp_22** | 2D Reshaped Temporal Conv (100x32 → 10x10x32, 1.36M params) | 0.0266 | Skip | t0: -0.04, t1: 0.09. Failed - 2D spatial structure doesn't capture temporal dynamics. |
 | **exp_23** | TCN+GRU + Enhanced Features (micro-price, OFI, WPP, 285K params) | **0.2679** | 0.2462 | t0: 0.3385, t1: 0.1267. 47 features. **PROMISING - revisit for improvements!** Good t0, Best t1! generalizes well. |
 | **exp_24** | LiT-inspired Transformer + GRU (Patch Embed, Causal Attn, 291K params) | **0.1773** | 0.1476 | Train-val: 0.3047 (leaky norm). Full-val: t0: 0.2575, t1: 0.0169. Normalization leakage: train uses full-seq z-score, inference uses online EMA. |
+| **exp_27** | LOB-ConvNeXt Tiny + GRU (Causal stem/downsample, no linear interp, ~12.3M params) | 0.1800 | Pending | Epoch 10/50 stop. t0: 0.1788, t1: 0.1824. Causal fixes applied; realistic validation after leakage cleanup. |
+| **exp_28** | Advanced Transformer (aicheye/wundernn arch, 135K params) | **0.3001** | Pending | t0: 0.3839, t1: 0.1325. Feature attention, temporal conv, ensemble heads, causal EMA norm. Context=100. Epoch 23/30 best. |
