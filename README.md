@@ -1,10 +1,10 @@
 # WunderNN Predictorium
 
-This repository contains my work for the WunderNN Predictorium limit order book prediction competition. The task was to predict two future price-movement targets, `t0` and `t1`, from sequential market data. The final score was `2/3 * corr(t0) + 1/3 * corr(t1)`, using weighted Pearson correlations.
+This repository contains my work for the WunderNN Predictorium limit order book prediction competition. The task was to predict two future price-movement targets, `t0` and `t1`, from sequential market data. 
 
 ## Competition result
 
-**54th place out of 5,094 participants** — a finish in approximately the top 1.1%.
+**54th place out of 5,094 participants** — (top 1.%.)
 
 See the [official final standings](https://wundernn.io/predictorium/finals).
 
