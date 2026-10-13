@@ -12,7 +12,7 @@ from tqdm import tqdm
 import wandb
 from pathlib import Path
 
-from model import MultiStreamAttentionModel
+from submission.final.src.model import MultiStreamAttentionModel
 
 
 def load_data(train_path: str, valid_path: str, seq_len: int = 100):

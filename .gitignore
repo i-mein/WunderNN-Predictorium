@@ -5,23 +5,24 @@
 /wandb
 /datasets
 /submissions
+/submission/*/wandb
 
-/solutions/backlog
-/solutions/baseline_starter
-/solutions/*/*.pth
-/solutions/*/wandb
+/experiments/backlog
+/experiments/baseline_starter
+/experiments/*/*.pth
+/experiments/*/wandb
 
-/solutions/exp_22b
-/solutions/exp_23b
-/solutions/exp_23bb
-/solutions/exp_24b
-/solutions/exp_25b
-/solutions/exp_25b
-/solutions/exp_26
-/solutions/exp_27
-/solutions/exp_28
-/solutions/exp_29
-solutions/exp_ensemble_01_15
+/experiments/exp_22b
+/experiments/exp_23b
+/experiments/exp_23bb
+/experiments/exp_24b
+/experiments/exp_25b
+/experiments/exp_25b
+/experiments/exp_26
+/experiments/exp_27
+/experiments/exp_28
+/experiments/exp_29
+/experiments/exp_ensemble_01_15
 
 # files 
 *.csv
