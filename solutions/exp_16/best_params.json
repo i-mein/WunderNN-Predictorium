@@ -1,0 +1,21 @@
+{
+  "t0": {
+    "iterations": 2500,
+    "learning_rate": 0.026867313736068595,
+    "depth": 7,
+    "l2_leaf_reg": 5.72280788469014,
+    "random_strength": 0.9206955354200199,
+    "bagging_temperature": 0.2912291401980419,
+    "min_data_in_leaf": 19
+  },
+  "t1": {
+    "iterations": 500,
+    "learning_rate": 0.03269124292259021,
+    "depth": 7,
+    "l2_leaf_reg": 15.393121856696784,
+    "random_strength": 2.4281758667148643,
+    "bagging_temperature": 0.3888535820809084,
+    "min_data_in_leaf": 42,
+    "subsample": 0.5463476238100519
+  }
+}

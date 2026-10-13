@@ -20,4 +20,5 @@ dependencies = [
     "pyyaml",
     "lightgbm>=4.6.0",
     "catboost>=1.2.8",
+    "optuna>=4.7.0",
 ]
