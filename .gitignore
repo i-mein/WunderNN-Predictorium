@@ -1,15 +1,27 @@
 # directories
 
 /artifacts/*.png
+/artifacts/*.txt
 /wandb
 /datasets
 /submissions
 
 /solutions/backlog
 /solutions/baseline_starter
-/solutions/../*.pth
+/solutions/*/*.pth
+/solutions/*/wandb
 
-/solutions/exp_08b/wandb/*
+/solutions/exp_22b
+/solutions/exp_23b
+/solutions/exp_23bb
+/solutions/exp_24b
+/solutions/exp_25b
+/solutions/exp_25b
+/solutions/exp_26
+/solutions/exp_27
+/solutions/exp_28
+/solutions/exp_29
+solutions/exp_ensemble_01_15
 
 # files 
 *.csv
